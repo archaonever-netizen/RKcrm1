@@ -2,20 +2,28 @@ from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, J
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import DATABASE_URL
-import time
+import time, sys
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
+print(f"Attempting to connect to database... URL starts with: {DATABASE_URL[:30]}...")
+
+last_exception = None
 for attempt in range(5):
     try:
-        engine = create_engine(DATABASE_URL)
-        engine.connect()
+        engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 10})
+        conn = engine.connect()
+        conn.close()
+        print("Database connection successful.")
         break
     except Exception as e:
+        last_exception = e
+        print(f"Connection attempt {attempt+1} failed: {e}", file=sys.stderr)
         time.sleep(2)
 else:
-    raise RuntimeError("Could not connect to database")
+    print("All connection attempts failed.", file=sys.stderr)
+    raise RuntimeError(f"Could not connect to database. Last error: {last_exception}")
 
 Base = declarative_base()
 
