@@ -6,6 +6,7 @@ from config import BOT_TOKEN, ADMIN_TELEGRAM_ID
 from bot_handlers import register_handlers
 from webapp import router as webapp_router
 import logging
+import os
 
 app = FastAPI()
 bot = Bot(token=BOT_TOKEN)
@@ -15,7 +16,8 @@ register_handlers(dp)
 
 @app.on_event("startup")
 async def on_startup():
-    webhook_url = f"https://ваш-домен.onrender.com/webhook"  # замените после деплоя
+    base_url = os.getenv("RENDER_EXTERNAL_URL", "https://your-service.onrender.com")
+    webhook_url = f"{base_url}/webhook"
     await bot.set_webhook(webhook_url)
 
 @app.post("/webhook")
