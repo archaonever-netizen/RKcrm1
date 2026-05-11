@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://telegram.org/js/telegram-web-app.js"></script></head>
+<body><div id="content">Загрузка...</div>
+<script>
+const urlParams = new URLSearchParams(window.location.search);
+const rowId = urlParams.get('rowId');
+const secret = urlParams.get('secret');
+fetch('/api/proposals/'+rowId)
+  .then(r=>r.json())
+  .then(data=>{
+    document.getElementById('content').innerHTML = `
+      <h2>${data.developerName}</h2>
+      <p>${data.text}</p>
+      <div>${(data.fileIds||[]).map(id=>`<img src="https://api.telegram.org/file/bot.../${id}" width="100">`)}</div>
+      <button onclick="action('approvePm')">Одобрить</button>
+      <button onclick="action('skipPm')">Пропустить</button>
+      <button onclick="action('rejectPm')">Отклонить</button>`;
+  });
+function action(act) {
+  fetch(`/api/proposals/${rowId}/${act}?secret=${secret}`,{method:'POST'}).then(()=>alert('Готово'));
+}
+</script></body></html>

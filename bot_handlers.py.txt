@@ -1,0 +1,94 @@
+import json, logging
+from aiogram import Dispatcher, types
+from models import Session, User, Developer, Chat, PendingMessage, LegalStatus
+from config import ADMIN_TELEGRAM_ID
+from ai_agents import classify_offer
+from datetime import datetime
+
+async def process_group_message(msg: types.Message, bot):
+    session = Session()
+    text = msg.text or msg.caption or ""
+    file_ids = []
+    if msg.photo:
+        file_ids.append(msg.photo[-1].file_id)
+    if msg.media_group_id:
+        # группировка медиа
+        pending = session.query(PendingMessage).filter_by(media_group_id=msg.media_group_id).first()
+        if not pending:
+            pending = PendingMessage(
+                row_id=msg.media_group_id,
+                original_chat_id=str(msg.chat.id),
+                media_group_id=msg.media_group_id,
+                text=text,
+                file_ids=json.dumps(file_ids),
+                status='New',
+                timestamp=datetime.now()
+            )
+            session.add(pending)
+        else:
+            old_files = json.loads(pending.file_ids)
+            old_files.extend(file_ids)
+            pending.file_ids = json.dumps(old_files)
+            session.commit()
+    else:
+        pending = PendingMessage(
+            row_id=str(msg.message_id),
+            original_chat_id=str(msg.chat.id),
+            original_message_id=str(msg.message_id),
+            text=text,
+            file_ids=json.dumps(file_ids),
+            status='New',
+            timestamp=datetime.now()
+        )
+        session.add(pending)
+        session.commit()
+        # Классификация через ИИ (заглушка)
+        if text:
+            offer = classify_offer(text)
+            if offer['type']:
+                await bot.send_message(ADMIN_TELEGRAM_ID, f"Новое предложение ({offer['type']})")
+    session.close()
+
+def register_handlers(dp: Dispatcher):
+    @dp.message_handler(commands=['start'])
+    async def start(msg: types.Message):
+        args = msg.get_args()
+        if args:
+            code = args.strip()
+            session = Session()
+            user = session.query(User).filter_by(activation_code=code, status='Pending').first()
+            if user:
+                user.telegram_id = str(msg.from_user.id)
+                user.status = 'Approved'
+                session.commit()
+                await msg.answer("✅ Аккаунт активирован!")
+            else:
+                await msg.answer("❌ Код не найден или заявка уже обработана.")
+            session.close()
+        else:
+            await msg.answer("Привет! Отправь код активации через ссылку.")
+
+    @dp.message_handler(commands=['myid'])
+    async def myid(msg: types.Message):
+        await msg.answer(f"Твой ID: {msg.from_user.id}")
+
+    @dp.message_handler(content_types=types.ContentType.ANY)
+    async def handle_all(msg: types.Message):
+        if msg.chat.type in ['group', 'supergroup']:
+            await process_group_message(msg, dp.bot)
+        elif msg.chat.type == 'private':
+            # Обработка команд админа
+            if str(msg.from_user.id) == str(ADMIN_TELEGRAM_ID):
+                if msg.text and msg.text.startswith('/adddev'):
+                    name = msg.text[8:].strip()
+                    session = Session()
+                    dev = Developer(name=name)
+                    session.add(dev)
+                    session.commit()
+                    await msg.answer(f"Застройщик '{name}' добавлен.")
+                    session.close()
+                elif msg.text == '/listpending':
+                    session = Session()
+                    items = session.query(PendingMessage).filter_by(status='New').all()
+                    await msg.answer(f"Новых: {len(items)}")
+                    session.close()
