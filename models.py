@@ -1,7 +1,21 @@
-from sqlalchemy import Column, String, Integer, DateTime, Text, JSON, Boolean, create_engine
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import DATABASE_URL
+import time
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set")
+
+for attempt in range(5):
+    try:
+        engine = create_engine(DATABASE_URL)
+        engine.connect()
+        break
+    except Exception as e:
+        time.sleep(2)
+else:
+    raise RuntimeError("Could not connect to database")
 
 Base = declarative_base()
 
@@ -60,6 +74,5 @@ class LegalStatus(Base):
     plan = Column(Text)
     last_updated = Column(DateTime)
 
-engine = create_engine(DATABASE_URL)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
